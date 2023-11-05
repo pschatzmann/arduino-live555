@@ -43,14 +43,14 @@ struct RTSPSimpleStreamerConfig {
 class RTSPSimpleStreamer {
  public:
   RTSPSimpleStreamer(AbstractFile& driver, int granularity=1000) {
-    ::setFileDriver(&driver);
+    ::set555FileDriver(&driver);
     // Begin by setting up our usage environment:
     TaskScheduler* scheduler = SimpleTaskScheduler::createNew(granularity);
     env = BasicUsageEnvironment::createNew(*scheduler);
   }
 
   RTSPSimpleStreamer(AbstractFile* driver, int granularity=1000) {
-    ::setFileDriver(driver);
+    ::set555FileDriver(driver);
     // Begin by setting up our usage environment:
     TaskScheduler* scheduler = BasicTaskScheduler::createNew(granularity);
     env = BasicUsageEnvironment::createNew(*scheduler);

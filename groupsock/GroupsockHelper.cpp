@@ -166,11 +166,11 @@ int setupDatagramSocket(UsageEnvironment& env, Port port, int domain) {
       if (port.num() == 0) addr = ReceivingInterfaceAddr;
       MAKE_SOCKADDR_IN(name, addr, port.num());
       if (bind(newSocket, (struct sockaddr*)&name, sizeof name) != 0) {
-	char tmpBuffer[100];
-	sprintf(tmpBuffer, "IPv4 bind() error (port number: %d): ", ntohs(port.num()));
-	socketErr(env, tmpBuffer);
-	closeSocket(newSocket);
-	return -1;
+        char tmpBuffer[100];
+        sprintf(tmpBuffer, "IPv4 bind() error (port number: %d): ", ntohs(port.num()));
+        socketErr(env, tmpBuffer);
+        closeSocket(newSocket);
+        return -1;
       }
 #if defined(__WIN32__) || defined(_WIN32)
 #else
@@ -186,11 +186,11 @@ int setupDatagramSocket(UsageEnvironment& env, Port port, int domain) {
 
       MAKE_SOCKADDR_IN6(name, addr, port.num());
       if (bind(newSocket, (struct sockaddr*)&name, sizeof name) != 0) {
-	char tmpBuffer[100];
-	sprintf(tmpBuffer, "IPv6 bind() error (port number: %d): ", ntohs(port.num()));
-	socketErr(env, tmpBuffer);
-	closeSocket(newSocket);
-	return -1;
+        char tmpBuffer[100];
+        sprintf(tmpBuffer, "IPv6 bind() error (port number: %d): ", ntohs(port.num()));
+        socketErr(env, tmpBuffer);
+        closeSocket(newSocket);
+        return -1;
       }
     }
   }
@@ -214,6 +214,9 @@ int setupDatagramSocket(UsageEnvironment& env, Port port, int domain) {
 }
 
 Boolean makeSocketNonBlocking(int sock) {
+#ifdef DEBUG_SEND
+      fprintf(stderr, "makeSocketNonBlocking\n"); fflush(stderr);
+#endif
 #if defined(__WIN32__) || defined(_WIN32)
   unsigned long arg = 1;
   return ioctlsocket(sock, FIONBIO, &arg) == 0;
@@ -227,6 +230,9 @@ Boolean makeSocketNonBlocking(int sock) {
 }
 
 Boolean makeSocketBlocking(int sock, unsigned writeTimeoutInMilliseconds) {
+#ifdef DEBUG_SEND
+      fprintf(stderr, "makeSocketBlocking\n"); fflush(stderr);
+#endif
   Boolean result;
 #if defined(__WIN32__) || defined(_WIN32)
   unsigned long arg = 0;
@@ -257,6 +263,9 @@ Boolean makeSocketBlocking(int sock, unsigned writeTimeoutInMilliseconds) {
 }
 
 Boolean setSocketKeepAlive(int sock) {
+#ifdef DEBUG_SEND
+      fprintf(stderr, "setSocketKeepAlive\n"); fflush(stderr);
+#endif
 #if defined(__WIN32__) || defined(_WIN32)
   // How do we do this in Windows?  For now, just make this a no-op in Windows:
 #else
@@ -292,6 +301,9 @@ Boolean setSocketKeepAlive(int sock) {
 
 int setupStreamSocket(UsageEnvironment& env, Port port, int domain,
 		      Boolean makeNonBlocking, Boolean setKeepAlive) {
+#ifdef DEBUG_SEND
+      fprintf(stderr, "setupStreamSocket\n"); fflush(stderr);
+#endif
   if (!initializeWinsockIfNecessary()) {
     socketErr(env, "Failed to initialize 'winsock': ");
     return -1;
@@ -422,17 +434,19 @@ int readSocket(UsageEnvironment& env,
   return bytesRead;
 }
 
-Boolean writeSocket(UsageEnvironment& env,
-		    int socket, struct sockaddr_storage const& addressAndPort,
-		    u_int8_t ttlArg,
-		    unsigned char* buffer, unsigned bufferSize) {
-  // Before sending, set the socket's TTL (IPv4 only):
-  if (addressAndPort.ss_family == AF_INET) {
+
 #if defined(__WIN32__) || defined(_WIN32)
 #define TTL_TYPE int
 #else
 #define TTL_TYPE u_int8_t
 #endif
+Boolean writeSocket(UsageEnvironment& env,
+		    int socket, struct sockaddr_storage const& addressAndPort,
+		    u_int8_t ttlArg,
+		    unsigned char* buffer, unsigned bufferSize) {
+  // Before sending, set the socket's TTL (IPv4 only):
+//#ifndef ARDUINO
+  if (addressAndPort.ss_family == AF_INET) {
     TTL_TYPE ttl = (TTL_TYPE)ttlArg;
     if (setsockopt(socket, IPPROTO_IP, IP_MULTICAST_TTL,
 		   (const char*)&ttl, sizeof ttl) < 0) {
@@ -440,6 +454,7 @@ Boolean writeSocket(UsageEnvironment& env,
       return False;
     }
   }
+//#endif
   
   return writeSocket(env, socket, addressAndPort, buffer, bufferSize);
 }
@@ -449,6 +464,11 @@ Boolean writeSocket(UsageEnvironment& env,
 		    unsigned char* buffer, unsigned bufferSize) {
   do {
     SOCKLEN_T dest_len = addressSize(addressAndPort);
+
+#ifdef DEBUG_SEND
+    fprintf(stderr, "sendto (%u)\n", bufferSize); fflush(stderr);
+#endif
+
     int bytesSent = sendto(socket, (char*)buffer, bufferSize, MSG_NOSIGNAL,
 			   (struct sockaddr const*)&addressAndPort, dest_len);
     if (bytesSent != (int)bufferSize) {
@@ -457,7 +477,11 @@ Boolean writeSocket(UsageEnvironment& env,
       socketErr(env, tmpBuf);
       break;
     }
-    
+
+#ifdef DEBUG_SEND
+    fprintf(stderr, "sendto (%u) -> %u \n", bufferSize, bytesSent); fflush(stderr);
+#endif
+
     return True;
   } while (0);
 
@@ -465,6 +489,9 @@ Boolean writeSocket(UsageEnvironment& env,
 }
 
 void ignoreSigPipeOnSocket(int socketNum) {
+#ifdef DEBUG_SEND
+    fprintf(stderr, "ignoreSigPipeOnSocket\n"); fflush(stderr);
+#endif
   #ifdef USE_SIGNALS
   #ifdef SO_NOSIGPIPE
   int set_option = 1;
@@ -478,12 +505,16 @@ void ignoreSigPipeOnSocket(int socketNum) {
 static unsigned getBufferSize(UsageEnvironment& env, int bufOptName,
 			      int socket) {
   unsigned curSize;
+#if defined(ARDUINO) && defined(ESP32) 
+  curSize = 1460;
+#else
   SOCKLEN_T sizeSize = sizeof curSize;
   if (getsockopt(socket, SOL_SOCKET, bufOptName,
 		 (char*)&curSize, &sizeSize) < 0) {
     socketErr(env, "getBufferSize() error: ");
     return 0;
   }
+#endif
 
   return curSize;
 }
@@ -521,6 +552,9 @@ static unsigned increaseBufferTo(UsageEnvironment& env, int bufOptName,
   // or to some smaller size, if that's not possible:
   while (requestedSize > curSize) {
     SOCKLEN_T sizeSize = sizeof requestedSize;
+#ifdef DEBUG_SEND
+    fprintf(stderr, "increaseBufferTo %u\n", requestedSize); fflush(stderr);
+#endif
     if (setsockopt(socket, SOL_SOCKET, bufOptName,
 		   (char*)&requestedSize, sizeSize) >= 0) {
       // success
@@ -541,6 +575,9 @@ unsigned increaseReceiveBufferTo(UsageEnvironment& env,
 }
 
 static void clearMulticastAllSocketOption(int socket, int domain) {
+#ifdef DEBUG_SEND
+    fprintf(stderr, "clearMulticastAllSocketOption\n"); fflush(stderr);
+#endif
 #ifdef IP_MULTICAST_ALL
   // This option is defined in modern versions of Linux to overcome a bug in the Linux kernel's default behavior.
   // When set to 0, it ensures that we receive only packets that were sent to the specified IP multicast address,
@@ -556,6 +593,10 @@ static void clearMulticastAllSocketOption(int socket, int domain) {
 
 Boolean socketJoinGroup(UsageEnvironment& env, int socket,
 			struct sockaddr_storage const& groupAddress){
+#ifdef DEBUG_SEND
+    fprintf(stderr, "socketJoinGroup\n"); fflush(stderr);
+#endif
+
   if (!IsMulticastAddress(groupAddress)) return True; // ignore this case
 
   int level, option_name;
@@ -609,6 +650,9 @@ Boolean socketJoinGroup(UsageEnvironment& env, int socket,
 
 Boolean socketLeaveGroup(UsageEnvironment&, int socket,
 			 struct sockaddr_storage const& groupAddress) {
+#ifdef DEBUG_SEND
+    fprintf(stderr, "socketLeaveGroup\n"); fflush(stderr);
+#endif
   if (!IsMulticastAddress(groupAddress)) return True; // ignore this case
 
   int level, option_name;
@@ -815,7 +859,13 @@ ipv4AddressBits ourIPv4Address(UsageEnvironment& env) {
   }
 
   if (!_weHaveAnIPv4Address) {
+#ifdef ARDUINO
+    _ourIPv4Address = localip();;
+#else
     getOurIPAddresses(env);
+#endif
+
+
   }
 
   return _ourIPv4Address;
@@ -904,16 +954,17 @@ void getOurIPAddresses(UsageEnvironment& env) {
       
       // We take the first IPv4 and first IPv6 addresses:
       if (p->ifa_addr->sa_family == AF_INET && addressIsNull(foundIPv4Address)) {
-	copyAddress(foundIPv4Address, p->ifa_addr);
-	getifaddrsWorks = True;
+        copyAddress(foundIPv4Address, p->ifa_addr);
+        getifaddrsWorks = True;
       } else if (p->ifa_addr->sa_family == AF_INET6 && addressIsNull(foundIPv6Address)) {
-	copyAddress(foundIPv6Address, p->ifa_addr);
-	getifaddrsWorks = True;
+        copyAddress(foundIPv6Address, p->ifa_addr);
+        getifaddrsWorks = True;
       }
     }
     freeifaddrs(ifap);
   }
 #endif
+
 
     if (!getifaddrsWorks) do {
       // We couldn't find our address using "getifaddrs()",
@@ -923,8 +974,8 @@ void getOurIPAddresses(UsageEnvironment& env) {
       hostname[0] = '\0';
       int result = gethostname(hostname, sizeof hostname);
       if (result != 0 || hostname[0] == '\0') {
-	env.setResultErrMsg("initial gethostname() failed");
-	break;
+        env.setResultErrMsg("initial gethostname() failed");
+        break;
       }
 
       // Try to resolve "hostname" to one or more IP addresses:
@@ -935,18 +986,19 @@ void getOurIPAddresses(UsageEnvironment& env) {
       // We take the first IPv4 and first IPv6 addresses, if any.
       NetAddress const* address;
       while ((address = iter.nextAddress()) != NULL) {
-	if (isBadAddressForUs(*address)) continue;
+        if (isBadAddressForUs(*address)) continue;
 
-	if (address->length() == sizeof (ipv4AddressBits) && addressIsNull(foundIPv4Address)) {
-	  copyAddress(foundIPv4Address, address);
-	} else if (address->length() == sizeof (ipv6AddressBits) && addressIsNull(foundIPv6Address)) {
-	  copyAddress(foundIPv6Address, address);
-	}
+        if (address->length() == sizeof (ipv4AddressBits) && addressIsNull(foundIPv4Address)) {
+          copyAddress(foundIPv4Address, address);
+        } else if (address->length() == sizeof (ipv6AddressBits) && addressIsNull(foundIPv6Address)) {
+          copyAddress(foundIPv6Address, address);
+        }
       }
     } while (0);
 
     // Note the IPv4 and IPv6 addresses that we found:
     _ourIPv4Address = ((sockaddr_in&)foundIPv4Address).sin_addr.s_addr;
+
 
     for (unsigned i = 0; i < 16; ++i) {
       _ourIPv6Address[i] = ((sockaddr_in6&)foundIPv6Address).sin6_addr.s6_addr[i];
