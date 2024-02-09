@@ -59,10 +59,10 @@ protected:
 
   static void schedulerTickTask(void* clientData);
   void schedulerTickTask();
-
-protected:
   // Redefined virtual functions:
   virtual void SingleStep(unsigned maxDelayTime=0);
+
+protected:
 
   virtual void setBackgroundHandling(int socketNum, int conditionSet, BackgroundHandlerProc* handlerProc, void* clientData);
   virtual void moveSocketHandling(int oldSocketNum, int newSocketNum);
