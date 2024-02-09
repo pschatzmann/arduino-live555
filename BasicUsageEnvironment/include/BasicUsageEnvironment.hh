@@ -53,17 +53,19 @@ public:
     // (You should set it to 0 only if you know that you will not be using 'event triggers'.)
   virtual ~BasicTaskScheduler();
 
+  virtual void SingleStep(unsigned maxDelayTime=0);
+    // "maxDelayTime" is in microseconds.  It allows a subclass to impose a limit
+    // on how long "select()" can delay, in case it wants to also do polling.
+    // 0 (the default value) means: There's no maximum; just look at the delay queue
+
 protected:
   BasicTaskScheduler(unsigned maxSchedulerGranularity);
-      // called only by "createNew()"
+  // called only by "createNew()"
 
   static void schedulerTickTask(void* clientData);
   void schedulerTickTask();
+
   // Redefined virtual functions:
-  virtual void SingleStep(unsigned maxDelayTime=0);
-
-protected:
-
   virtual void setBackgroundHandling(int socketNum, int conditionSet, BackgroundHandlerProc* handlerProc, void* clientData);
   virtual void moveSocketHandling(int oldSocketNum, int newSocketNum);
 
